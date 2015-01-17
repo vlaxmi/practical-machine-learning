@@ -1,0 +1,140 @@
+---
+title: "PracticalMachineLearning-Project"
+author: "Vijay Laxmi"
+date: "Saturday, January 17, 2015"
+output: html_document
+---
+
+Context:
+---------
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.  
+
+Load Data:
+-----------
+
+We download training and testing data to the local file system. Training Data is downloaded from  <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>. Testing Data is downloaded from <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+```{r, warning=FALSE}
+library(AppliedPredictiveModeling)
+library(kernlab)
+library(caret)
+library(rpart)
+
+##loading Data
+dumbellData <-read.table("./pml-training.csv", sep=",", header=TRUE)
+
+```
+
+PreProcessing
+--------------
+
+Firstly, we remove the first 7 columns (user, timestamp etc..) as they do not add any value. Secondly, we will remove the columns that have mostly 'NA' as value or are empty. Then finally, we use nearZeroVar function from caret package to remove unnecessary variables.
+
+
+```{r, results='hide'}
+dumbellData<-dumbellData[,-(1:7)]
+
+dumbellData[ dumbellData == '' | dumbellData == 'NA'] <- NA
+indx <-which(colSums(is.na(dumbellData))!=0)
+dumbellData<- dumbellData[,-indx]
+
+nzv <- nearZeroVar(dumbellData[,-ncol(dumbellData)],saveMetrics = TRUE)
+dumbellData<-dumbellData[, !as.logical(nzv$nzv)]
+
+```
+
+Data Split
+----------
+
+In this step, we partition the training data that we downloaded into further train(75%) and test data(25%). We will create model using train data and then test the model using test data.
+
+```{r, results='hide'}
+inTrain <- createDataPartition(y=dumbellData$classe, p=0.75, list=FALSE)
+training <-dumbellData[inTrain,]
+testing <- dumbellData[-inTrain,]
+
+```
+
+Prepare the Model
+-----------------
+
+We use "randomForest" method to create a model as "randomForest" method is best known for accuracy. We will check for overfitting later.
+
+
+```{r, warning=FALSE}
+set.seed(3232)
+modFit <- train(classe~., data=training, method = "rf", tuneLength = 1, ntree = 25)
+```
+
+We can check which variables to keep. We used variables of importance to see which variables are significant
+
+```{r, results='hide'}
+varImp(modFit$finalModel)
+```
+
+We tried to use first 12 variables that are significant. Let's try to reduce the set to 12 variables and see if we get the same accuracy.We also tried to use varImpPlot function to see which variables are of importance.
+
+```{r, results='hide'}
+myvars <- c("roll_belt","pitch_forearm","yaw_belt","magnet_dumbbell_z",
+            "pitch_belt","magnet_dumbbell_y",",magnet_dumbbell_z",
+            "accel_belt_z","roll_forearm","roll_dumbbell",
+            "accel_dumbbell_y","accel_dumbbell_z","classe")
+training2 <- training[, names(training) %in% myvars]
+
+modFit2 <- train(classe~., data=training2, method = "rf", tuneLength = 1, ntree = 25)
+
+```
+
+Cross-Validation and Test the Model
+------------------------------------
+
+We will validate both models - one with all variables and second with 12 variables to see the difference in accuracy, cross validation error.
+
+```{r}
+pred <- predict(modFit, testing)
+conf_matrix <- confusionMatrix(testing$classe,pred)
+conf_matrix
+
+```
+
+
+```{r}
+testing2 <- testing[, names(testing) %in% myvars]
+pred2 <- predict(modFit2, testing2)
+conf_matrix2 <- confusionMatrix(testing2$classe,pred2)
+conf_matrix2
+
+
+```
+
+Accuracy has reduced from .995 to .985. We can do trial and error to see what are the approximately number of variables needed. However we restrict our model to  first model with all variables.
+
+Our cross-validation error is given by conf_matrix 1 and 2.
+
+The estimated out-of-sample error is 1 - the model accuracy, which in this case is (1-0.995) is .005.
+
+
+Testing 20 sets 
+-------------------
+
+Now we will test data given in pml-training file. We will load the data, do the same pre-proccessing as we did on training data and then predict the "classe" outcome based on model created above.
+
+```{r}
+dumbell_Test_Data <-read.table("./pml-testing.csv", sep=",", header=TRUE)
+
+dumbell_Test_Data<-dumbell_Test_Data[,-(1:7)]
+
+dumbell_Test_Data[ dumbell_Test_Data == '' | dumbell_Test_Data == 'NA'] <- NA
+indx <-which(colSums(is.na(dumbell_Test_Data))!=0)
+dumbell_Test_Data<- dumbell_Test_Data[,-indx]
+
+nzv <- nearZeroVar(dumbell_Test_Data[,-ncol(dumbell_Test_Data)],saveMetrics = TRUE)
+dumbell_Test_Data<-dumbell_Test_Data[, !as.logical(nzv$nzv)]
+
+
+pred3<- predict(modFit, dumbell_Test_Data)
+pred3
+
+```
+
